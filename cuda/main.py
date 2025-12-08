@@ -11,7 +11,7 @@ from kernels import min_kernel, max_kernel, sum_kernel, \
     # prefix_sum_int,prefix_sum_float, prefix_sum_double
 
 # BUF_BYTE_SIZE = 1 << 24
-SAMPLE_COUNT = 20
+SAMPLE_COUNT = 5
 
 print("Compiling kernel...")
 
@@ -33,6 +33,7 @@ with cp.cuda.Device(0):
         base_buffer = rng.uniform(1, 1, count)
         # base_buffer = rng.uniform(-100, 100, count)
         for dtype in tested_types:    
+            base_buffer_typed = np.array(base_buffer, dtype=dtype, copy=True)
             samples = []
 
             for i in range(SAMPLE_COUNT):
@@ -45,15 +46,19 @@ with cp.cuda.Device(0):
                 # result = max_kernel(gpu_buffer, axis=0)
                 # result = prefix_sum_kernel(gpu_buffer, axis=0)
 
-                h_in = base_buffer
+                h_in = base_buffer_typed
+                print("Init elements:", h_in[:10], f"({len(h_in)})")
                 # print("first elem:", base_buffer[1])
                 # print("last elem:", base_buffer[-1])
 
-                h_out = np.full((count, ), 0, dtype=dtype)
-
-                result = prefix_sum(h_in, h_out, count)
-                print("returned d_out:", result)
-                print(h_out[-1])
+                # h_out = np.full((count, ), 0, dtype=dtype)
+                h_out = np.empty_like(h_in)
+                # h_result = np.empty_like(h_in)
+                print(f"PASSING COUNT: {count}")
+                result = prefix_sum(h_in, h_out, count, dtype)
+                print("returned d_out:", result[-10:])
+                print("returned d_out:", result[:10])
+                print("--------------------------")
                 # cuda.memcpy_dtoh(h_out, d_out_after)
                 # print("AFTER KERNEL:", result[:10])
 
@@ -62,3 +67,8 @@ with cp.cuda.Device(0):
                 del gpu_buffer
             # print(dtype.name, count, result, "\t", mean(samples), median(samples))
             print(dtype.name, count, "\t", mean(samples), median(samples))
+        print("=====================================================================")
+        print("=====================================================================")
+        print("=====================================================================")
+        print("=====================================================================")
+        print("=====================================================================")

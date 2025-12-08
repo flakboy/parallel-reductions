@@ -159,10 +159,11 @@ void prefixSum(T *d_in, T *d_out, int n)
 // // instantiating templates in order to be prevent name mangling
 // // and be able to export functions to Python
 extern "C"
-{                               
-    template __global__ void blellochScanBlock<int>(const int *d_in, int *d_out, int *d_blockSums, int n); 
-    template __global__ void blellochScanBlock<float>(const float *d_in, float *d_out, float *d_blockSums, int n); 
-    template __global__ void blellochScanBlock<double>(const double *d_in, double *d_out, double *d_blockSums, int n); 
+{
+    
+    // template __global__ void blellochScanBlock<int>(const int *d_in, int *d_out, int *d_blockSums, int n); 
+    // template __global__ void blellochScanBlock<float>(const float *d_in, float *d_out, float *d_blockSums, int n); 
+    // template __global__ void blellochScanBlock<double>(const double *d_in, double *d_out, double *d_blockSums, int n); 
  
 //     __global__ void blellochScanBlockInt(const int *d_in, int *d_out, int *d_blockSums, int n, int blocks) {
 //         blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n);
