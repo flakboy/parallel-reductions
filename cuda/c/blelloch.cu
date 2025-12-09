@@ -2,6 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//                          ABOMINATION OF CODE BELOW. YOU ARE READING AT YOUR OWN RISK.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 // amount of threads within single thread block
 #define BLOCK_SIZE 1024
 #define ELEMS_PER_BLOCK BLOCK_SIZE * 2
@@ -27,183 +37,129 @@
 // Block-level Blelloch scan kernel
 // Each block scans ELEMS_PER_BLOCK elements
 // if d_blockSums is a nullptr, then don't write blockSums
-template <typename T>
-__global__ void blellochScanBlock(const T *d_in, T *d_out, T *d_blockSums, int n)
-{
-    __shared__ T smem[ELEMS_PER_BLOCK];
 
-    int tid = threadIdx.x;
-    int blockStart = blockIdx.x * ELEMS_PER_BLOCK;
-    // index of first element processed by thread
-    int idx1 = blockStart + tid;
-    // index of second element processed by thread
-    int idx2 = blockStart + tid + BLOCK_SIZE;
-
-    // Copy data from input into shared memory
-    // Check if the indices fit inside the actual buffer size
-    smem[tid] = (idx1 < n) ? d_in[idx1] : T(0);
-    smem[tid + BLOCK_SIZE] = (idx2 < n) ? d_in[idx2] : T(0);
-
-    __syncthreads();
-    // Up-sweep phase
-    int stride = 1;
-    for (int d = BLOCK_SIZE; d > 0; d >>= 1)
-    {
-        __syncthreads();
-        if (tid < d)
-        {
-            // left leaf/root of binary tree
-            int ai = stride * (2 * tid + 1) - 1;
-
-            // right leaf/root of binary tree
-            int bi = stride * (2 * tid + 2) - 1;
-
-            // reduce elements and store in right leaf
-            smem[bi] += smem[ai];
-        }
-        stride *= 2;
-    }
-
-    // Save total sum for this block
-    if (tid == 0)
-    {
-        if (d_blockSums != nullptr)
-        {
-            d_blockSums[blockIdx.x] = smem[ELEMS_PER_BLOCK - 1];
-        }
-        smem[ELEMS_PER_BLOCK - 1] = 0; // Clear last element for down-sweep
-    }
-
-    // Down-sweep phase
-    for (int d = 1; d < ELEMS_PER_BLOCK; d *= 2)
-    {
-        stride /= 2;
-        __syncthreads();
-        if (tid < d)
-        {
-            int ai = stride * (2 * tid + 1) - 1;
-            int bi = stride * (2 * tid + 2) - 1;
-            int t = smem[ai];
-            smem[ai] = smem[bi];
-            smem[bi] += t;
-        }
-    }
-    __syncthreads();
-
-    // Copy results from shared memory to output
-    if (idx1 < n)
-        d_out[idx1] = smem[tid];
-    if (idx2 < n)
-        d_out[idx2] = smem[tid + BLOCK_SIZE];
-}
-
-// Add scanned block sums to all elements
-template <typename T>
-__global__ void addBlockSums(T *d_data, T *d_blockSums, int n)
-{
-    int idx = blockIdx.x * ELEMS_PER_BLOCK + threadIdx.x;
-
-    if (blockIdx.x > 0)
-    {
-        T blockSum = d_blockSums[blockIdx.x];
-        if (idx < n)
-        {
-            d_data[idx] += blockSum;
-        }
-        if (idx + BLOCK_SIZE < n)
-        {
-            d_data[idx + BLOCK_SIZE] += blockSum;
-        }
-    }
-}
-
-// Host function to perform hierarchical scan
-// d_in - device memory for input
-// d_out - device memory for output
-// n - number of elements (total buffer size)
-template <typename T>
-void prefixSum(T *d_in, T *d_out, int n)
-{
-    int elemsPerBlock = ELEMS_PER_BLOCK;
-
-    // numBlocks calculation uses ceil function trick for efficient integer division
-
-    int numBlocks = (n + elemsPerBlock - 1) / elemsPerBlock;
-
-    // Edge case: the size of buffer is smaller than ELEMS_PER_BLOCK
-    if (numBlocks == 1)
-    {
-        blellochScanBlock<<<1, BLOCK_SIZE>>>(d_in, d_out, (T *)nullptr, n);
-        return;
-    }
-
-    // Allocate memory for block sums
-    T *d_blockSums;
-    T *d_blockSumsScanned;
-    CUDA_CHECK(cudaMalloc(&d_blockSums, numBlocks * sizeof(T)));
-    CUDA_CHECK(cudaMalloc(&d_blockSumsScanned, numBlocks * sizeof(T)));
-
-    // Step 1: Scan each block and store block sums
-    blellochScanBlock<<<numBlocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n);
-
-    // Step 2: Recursively scan the block sums
-    prefixSum(d_blockSums, d_blockSumsScanned, numBlocks);
-
-    // Step 3: Add scanned block sums to each block's elements
-    addBlockSums<<<numBlocks, BLOCK_SIZE>>>(d_out, d_blockSumsScanned, n);
-
-    CUDA_CHECK(cudaFree(d_blockSums));
-    CUDA_CHECK(cudaFree(d_blockSumsScanned));
-}
-
-// // instantiating templates in order to be prevent name mangling
-// // and be able to export functions to Python
-extern "C"
-{
-    
-    // template __global__ void blellochScanBlock<int>(const int *d_in, int *d_out, int *d_blockSums, int n); 
-    // template __global__ void blellochScanBlock<float>(const float *d_in, float *d_out, float *d_blockSums, int n); 
-    // template __global__ void blellochScanBlock<double>(const double *d_in, double *d_out, double *d_blockSums, int n); 
- 
-//     __global__ void blellochScanBlockInt(const int *d_in, int *d_out, int *d_blockSums, int n, int blocks) {
-//         blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n);
-//     }
-
-    // __global__ void blellochScanBlockFloat(const float *d_in, float *d_out, float *d_blockSums, int n, int blocks) {
-    //     blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n);
-    // }
-
-    // __global__ void blellochScanBlockDouble(const double *d_in, double *d_out, double *d_blockSums, int n, int blocks) {
-    //     blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n);
-    // }
-    
-    // __global__ void blellochScanBlockIntNullptr(const int *d_in, int *d_out, int n, int blocks) {
-    //     blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, (int*)nullptr, n);
-    // }
-
-    // __global__ void blellochScanBlockFloatNullptr(const float *d_in, float *d_out, int n, int blocks) {
-    //     blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, (float*)nullptr, n);
-    // }
-
-    // __global__ void blellochScanBlockDoubleNullptr(const double *d_in, double *d_out, int n, int blocks) {
-    //     blellochScanBlock<<<blocks, BLOCK_SIZE>>>(d_in, d_out, (double*)nullptr, n);
-    // }
-
-    // __global__ void addBlockSumsInt(int *d_data, int *d_blockSums, int n, int blocks) {
-    //     addBlockSums<<<blocks, BLOCK_SIZE>>>(d_data, d_blockSums, n);
-    // }
-
-    // __global__ void addBlockSumsFloat(float *d_data, float *d_blockSums, int n, int blocks) {
-    //     addBlockSums<<<blocks, BLOCK_SIZE>>>(d_data, d_blockSums, n);
-    // }
-
-    // __global__ void addBlockSumsDouble(double *d_data, double *d_blockSums, int n, int blocks) {
-    //     addBlockSums<<<blocks, BLOCK_SIZE>>>(d_data, d_blockSums, n);
-    // }
+// Dynamically create functions for int, double and float.
+// Since compiler mangles function names, 
+// and templates are not compatible with extern "C",
+// and I really wanted to be able to import those functions in PyCUDA,
+// this is the only solution I could think of.
+#define BLELLOCH_SCAN_BLOCK(T) \
+__global__ void blellochScanBlock_##T(const T *d_in, T *d_out, T *d_blockSums, int n) { \
+    __shared__ T smem[ELEMS_PER_BLOCK]; \
+    int tid = threadIdx.x; \
+    int blockStart = blockIdx.x * ELEMS_PER_BLOCK; \
+    int idx1 = blockStart + tid; \
+    int idx2 = blockStart + tid + BLOCK_SIZE; \
+    smem[tid] = (idx1 < n) ? d_in[idx1] : T(0); \
+    smem[tid + BLOCK_SIZE] = (idx2 < n) ? d_in[idx2] : T(0); \
+    __syncthreads(); \
+    int stride = 1; \
+    for (int d = BLOCK_SIZE; d > 0; d >>= 1) { \
+        __syncthreads(); \
+        if (tid < d) { \
+            int ai = stride * (2 * tid + 1) - 1; \
+            int bi = stride * (2 * tid + 2) - 1; \
+            smem[bi] += smem[ai]; \
+        } \
+        stride *= 2; \
+    } \
+    if (tid == 0) { \
+        /*if (d_blockSums != nullptr) {*/ \
+            d_blockSums[blockIdx.x] = smem[ELEMS_PER_BLOCK - 1]; \
+        /*} */\
+        smem[ELEMS_PER_BLOCK - 1] = T(0); \
+    } \
+    for (int d = 1; d < ELEMS_PER_BLOCK; d *= 2) { \
+        stride /= 2; \
+        __syncthreads(); \
+        if (tid < d) { \
+            int ai = stride * (2 * tid + 1) - 1; \
+            int bi = stride * (2 * tid + 2) - 1; \
+            T t = smem[ai]; \
+            smem[ai] = smem[bi]; \
+            smem[bi] += t; \
+        } \
+    } \
+    __syncthreads(); \
+    if (idx1 < n) d_out[idx1] = smem[tid]; \
+    if (idx2 < n) d_out[idx2] = smem[tid + BLOCK_SIZE]; \
 }
 
 
-#define DEBUG 1
+/* Add scanned block sums to all elements */
+#define ADD_BLOCK_SUMS(T) \
+__global__ void addBlockSums_##T(T *d_data, T *d_blockSums, int n) \
+{ \
+    int idx = blockIdx.x * ELEMS_PER_BLOCK + threadIdx.x; \
+    \
+    if (blockIdx.x > 0) \
+    { \
+        T blockSum = d_blockSums[blockIdx.x]; \
+        if (idx < n) \
+        { \
+            d_data[idx] += blockSum; \
+        } \
+        if (idx + BLOCK_SIZE < n) \
+        { \
+            d_data[idx + BLOCK_SIZE] += blockSum; \
+        } \
+    } \
+} \
+
+/* Host function to perform hierarchical scan */
+/* d_in - device memory for input */
+/* d_out - device memory for output */
+/* n - number of elements (total buffer size) */
+#define PREFIX_SUMS(T) \
+void prefixSum_##T(T *d_in, T *d_out, int n) \
+{ \
+    int elemsPerBlock = ELEMS_PER_BLOCK; \
+    /*numBlocks calculation uses ceil function trick for efficient integer division */ \
+    \
+    int numBlocks = (n + elemsPerBlock - 1) / elemsPerBlock; \
+    \
+    /*Edge case: the size of buffer is smaller than ELEMS_PER_BLOCK */ \
+    if (numBlocks == 1) \
+    { \
+        T *d_blockSums; \
+        cudaMalloc(&d_blockSums, sizeof(T)); \
+        blellochScanBlock_##T<<<1, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n); \
+        return; \
+    } \
+    \
+    /*Allocate memory for block sums */ \
+    T *d_blockSums; \
+    T *d_blockSumsScanned; \
+    CUDA_CHECK(cudaMalloc(&d_blockSums, numBlocks * sizeof(T))); \
+    CUDA_CHECK(cudaMalloc(&d_blockSumsScanned, numBlocks * sizeof(T))); \
+    \
+    /*Step 1: Scan each block and store block sums */ \
+    blellochScanBlock_##T<<<numBlocks, BLOCK_SIZE>>>(d_in, d_out, d_blockSums, n); \
+    \
+    /*Step 2: Recursively scan the block sums */ \
+    prefixSum_##T(d_blockSums, d_blockSumsScanned, numBlocks); \
+    \
+    /*Step 3: Add scanned block sums to each block's elements */ \
+    addBlockSums_##T<<<numBlocks, BLOCK_SIZE>>>(d_out, d_blockSumsScanned, n); \
+    \
+    CUDA_CHECK(cudaFree(d_blockSums)); \
+    CUDA_CHECK(cudaFree(d_blockSumsScanned)); \
+}
+
+
+
+BLELLOCH_SCAN_BLOCK(long)
+BLELLOCH_SCAN_BLOCK(double)
+BLELLOCH_SCAN_BLOCK(float)
+ADD_BLOCK_SUMS(long)
+ADD_BLOCK_SUMS(double)
+ADD_BLOCK_SUMS(float)
+PREFIX_SUMS(long)
+PREFIX_SUMS(double)
+PREFIX_SUMS(float)
+
+
+// #define DEBUG 1
 #ifdef DEBUG
 // Template verification function
 template<typename T>
@@ -239,7 +195,7 @@ void testPrefixSum(int n, const char *typeName)
     T *h_output = (T *)malloc(size);
 
     // Initialize input
-    for (int i = 0; i < n; i++)
+    for (long i = 0; i < n; i++)
     {
         h_input[i] = T(1); // Simple test: all ones
     }
@@ -260,7 +216,8 @@ void testPrefixSum(int n, const char *typeName)
 
     // Perform prefix sum
     CUDA_CHECK(cudaEventRecord(start));
-    prefixSum(d_input, d_output, n);
+    prefixSum_long(d_input, d_output, n);
+    // prefixSum(d_input, d_output, n);
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
 
@@ -273,6 +230,7 @@ void testPrefixSum(int n, const char *typeName)
     // Verify
     bool correct = verifyScan(h_input, h_output, n);
     
+    printf("Last element: %ld\n", h_output[n - 1]);
     if (correct)
     {
         printf("✓ Prefix sum correct!\n");
@@ -294,22 +252,22 @@ void testPrefixSum(int n, const char *typeName)
     free(h_output);
 }
 
-
 int main()
 {
     // Test with different sizes and types
-    size_t buffer_size = 1024 * sizeof(int);// << 30;
+    // size_t buffer_size = 1024 * sizeof(int);
+    size_t buffer_size = 1 << 27;
     size_t n = (buffer_size) / sizeof(int);
     // size_t size = n * sizeof(int);
 
     // Test int
-    testPrefixSum<int>(n, "int");
+    testPrefixSum<long>(n, "int");
 
     // Test float
-    testPrefixSum<float>(n, "float");
+    // testPrefixSum<float>(n, "float");
 
     // Test double
-    testPrefixSum<double>(n, "double");
+    // testPrefixSum<double>(n, "double");
 
     return 0;
 }
