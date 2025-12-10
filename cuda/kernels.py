@@ -60,6 +60,7 @@ addBlockSumsFloat = __module.get_function('addBlockSums_float')
 __BLOCK_SIZE = 1024
 __ELEMS_PER_BLOCK = __BLOCK_SIZE * 2
 
+
 def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
     dtype_size = dtype.itemsize
 
@@ -68,15 +69,12 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
 
     if dtype == "int64":
         blellochScanBlock = blellochScanBlockInt
-        # blellochScanBlockNullptr = blellochScanBlockIntNullptr
         addBlocksSums = addBlockSumsInt
     elif dtype == "float32":
         blellochScanBlock = blellochScanBlockFloat
-        # blellochScanBlockNullptr = blellochScanBlockFloatNullptr
         addBlocksSums = addBlockSumsFloat
     elif dtype == "float64":
         blellochScanBlock = blellochScanBlockDouble
-        # blellochScanBlockNullptr = blellochScanBlockDoubleNullptr
         addBlocksSums = addBlockSumsDouble
 
     if blellochScanBlock is None or addBlocksSums is None:
@@ -100,7 +98,7 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
 
         return d_out
         
-    # # Allocate memory for block sums
+    # Allocate memory for block sums
     d_blockSums = cuda.mem_alloc(numBlocks * dtype_size)    # type: ignore
     d_blockSumsScanned = cuda.mem_alloc(numBlocks * dtype_size)  # type: ignore
 
@@ -121,5 +119,8 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
         block=(__BLOCK_SIZE, 1, 1),
         grid=(numBlocks, 1, 1)
     )
+
+    d_blockSumsScanned.free()
+    d_blockSums.free()
 
     return d_out
