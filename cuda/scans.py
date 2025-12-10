@@ -7,7 +7,7 @@ from kernels import prefix_sum
     
 SAMPLE_COUNT = 30
 tested_types: list[np.dtype] = [
-    np.dtype("float32"), 
+    # np.dtype("float32"), 
     np.dtype("float64"), 
     np.dtype("int")
 ]

@@ -6,7 +6,7 @@
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//                          ABOMINATION OF CODE BELOW. YOU ARE READING AT YOUR OWN RISK.
+//                      MACRO ABOMINATION BELOW. YOU ARE READING AT YOUR OWN RISK.
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -14,10 +14,8 @@
 
 // amount of threads within single thread block
 #define BLOCK_SIZE 1024
-#define ELEMS_PER_BLOCK BLOCK_SIZE * 2
-
-// amount of threads handled by single warp
-#define WARP_SIZE 32
+// #define ELEMS_PER_BLOCK BLOCK_SIZE * 2
+#define ELEMS_PER_BLOCK 2048
 
 // Error checking macro
 #define CUDA_CHECK(call)                                                     \
@@ -52,16 +50,16 @@ __global__ void blellochScanBlock_##T(const T *d_in, T *d_out, T *d_blockSums, i
     int idx2 = blockStart + tid + BLOCK_SIZE; \
     smem[tid] = (idx1 < n) ? d_in[idx1] : T(0); \
     smem[tid + BLOCK_SIZE] = (idx2 < n) ? d_in[idx2] : T(0); \
-    __syncthreads(); \
     int stride = 1; \
+    __syncthreads(); \
     for (int d = BLOCK_SIZE; d > 0; d >>= 1) { \
-        __syncthreads(); \
+        /*__syncthreads(); */ \
         if (tid < d) { \
             int ai = stride * (2 * tid + 1) - 1; \
             int bi = stride * (2 * tid + 2) - 1; \
             smem[bi] += smem[ai]; \
         } \
-        stride *= 2; \
+        stride <<= 1; \
     } \
     if (tid == 0) { \
         /*if (d_blockSums != nullptr) {*/ \
@@ -69,9 +67,9 @@ __global__ void blellochScanBlock_##T(const T *d_in, T *d_out, T *d_blockSums, i
         /*} */\
         smem[ELEMS_PER_BLOCK - 1] = T(0); \
     } \
-    for (int d = 1; d < ELEMS_PER_BLOCK; d *= 2) { \
+    for (int d = 1; d < ELEMS_PER_BLOCK; d <<= 1) { \
         stride /= 2; \
-        __syncthreads(); \
+        /* __syncthreads(); */\
         if (tid < d) { \
             int ai = stride * (2 * tid + 1) - 1; \
             int bi = stride * (2 * tid + 2) - 1; \
