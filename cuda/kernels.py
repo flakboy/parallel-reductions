@@ -22,9 +22,13 @@ min_kernel = cp.ReductionKernel(
     "T x",  # input params
     "T y",  # output params
     "x",  # map
-    "min(a, b)",  # reduce
+    # "min(a, b)",  # reduce
+    "a < b ? a : b",  # reduce
     "y = a",  # post-reduction map
-    # a representation of Infinity number - https://forums.developer.nvidia.com/t/how-to-assign-infinity-to-variables-in-cuda-code/14348
+    # a CUDA macro for Infinity number - https://forums.developer.nvidia.com/t/how-to-assign-infinity-to-variables-in-cuda-code/14348
+    # FIXME: 
+    # using the Infinity represented by double type, 
+    # is probably responsible for invalid output type (float64 for int64 input)
     "CUDART_INF_F",
     "buffer_min",  # kernel name
 )
@@ -33,9 +37,13 @@ max_kernel = cp.ReductionKernel(
     "T x",  # input params
     "T y",  # output params
     "x",  # map
-    "max(a, b)",  # reduce
+    # "max(a, b)",  # reduce
+    "a > b ? a : b",  # reduce
     "y = a",  # post-reduction map
     # a representation of Infinity number - https://forums.developer.nvidia.com/t/how-to-assign-infinity-to-variables-in-cuda-code/14348
+    # FIXME: 
+    # using the Infinity represented by double type, 
+    # is probably responsible for invalid output type (float64 for int64 input)
     "-CUDART_INF_F",
     "buffer_max",  # kernel name
 )
@@ -58,10 +66,10 @@ addBlockSumsDouble = __module.get_function('addBlockSums_double')
 addBlockSumsFloat = __module.get_function('addBlockSums_float')
 
 __BLOCK_SIZE = 1024
-__ELEMS_PER_BLOCK = __BLOCK_SIZE * 2
+# __ELEMS_PER_BLOCK = __BLOCK_SIZE * 2
 
 
-def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
+def prefix_sum(d_in, d_out, n: int, dtype: np.dtype, block_size: int = __BLOCK_SIZE):
     dtype_size = dtype.itemsize
 
     blellochScanBlock = None
@@ -80,7 +88,7 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
     if blellochScanBlock is None or addBlocksSums is None:
         raise Exception(f"Couldn't find function implementation for given type: {dtype}")
 
-    elemsPerBlock = __ELEMS_PER_BLOCK;
+    elemsPerBlock = block_size * 2;
     # numBlocks =  (n + elemsPerBlock - 1) / elemsPerBlock;
     numBlocks = math.ceil(n / elemsPerBlock)
 
@@ -91,7 +99,7 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
         # since the function call will return only sum of a single block
         blellochScanBlock(
             d_in, d_out, cuda.In(np.zeros(1, dtype=dtype)), np.int32(n),
-            block=(__BLOCK_SIZE, 1, 1),
+            block=(block_size, 1, 1),
             # grid=(numBlocks, 1)
             grid=(1, 1)
         )
@@ -106,7 +114,7 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
     # print("Step 1")
     blellochScanBlock(
         d_in, d_out, d_blockSums, np.int32(n),
-        block=(__BLOCK_SIZE, 1, 1),
+        block=(block_size, 1, 1),
         grid=(numBlocks, 1)
     )
 
@@ -116,7 +124,7 @@ def prefix_sum(d_in, d_out, n: int, dtype: np.dtype):
     #Step 3: Add scanned block sums to each block's elements
     addBlocksSums(
         d_out, d_blockSumsScanned, np.int32(n),
-        block=(__BLOCK_SIZE, 1, 1),
+        block=(block_size, 1, 1),
         grid=(numBlocks, 1, 1)
     )
 

@@ -5,7 +5,7 @@ from statistics import mean
 
 from kernels import prefix_sum
     
-SAMPLE_COUNT = 30
+SAMPLE_COUNT = 50
 tested_types: list[np.dtype] = [
     # np.dtype("float32"), 
     np.dtype("float64"), 
@@ -14,7 +14,7 @@ tested_types: list[np.dtype] = [
 tested_counts: list[int] = [
     1 << 10, 
     1 << 20, 
-    1 << 27
+    1 << 24
 ]
 
 def sequential_prefix_sum(buffer):
@@ -29,7 +29,7 @@ def sequential_prefix_sum(buffer):
 #    formatter={'float_kind':'{:f}'.format})
 rng = np.random.default_rng()
 for dtype in tested_types:    
-    print(dtype.name)
+    print(dtype.name, dtype.itemsize)
     for count in tested_counts:
         n = count
         samples = []
@@ -44,23 +44,21 @@ for dtype in tested_types:
 
         for i in range(SAMPLE_COUNT):
             start_time = time.time()
-
             d_in = cuda.mem_alloc(h_in.nbytes)  # type: ignore
             cuda.memcpy_htod(d_in, h_in)    # type: ignore
             d_out = cuda.mem_alloc(dtype.itemsize * n)    # type: ignore
             
             result = prefix_sum(d_in, d_out, count, dtype)
-            
             cuda.memcpy_dtoh(h_out, d_out)  # type: ignore
+            
+            samples.append(time.time() - start_time)  
             diff = seq_prefix_sum[i] - h_out[i]
             diffs.append(diff.item())
             
             d_in.free()
             d_out.free()
 
-            samples.append(time.time() - start_time)
             
         
-
-        print("PREFIX SUM:", count, "\tTIME:", mean(samples), "\tERROR:", mean(diffs))
+        print("SUM", count, "\tTIME:", mean(samples), "\tERROR:", mean(diffs), "\tBANDWIDTH:", count * dtype.itemsize / mean(samples) / (1000 ** 3))
     print("=====================================================================")
