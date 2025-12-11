@@ -5,7 +5,7 @@ from statistics import median, mean
 
 from kernels import min_kernel, max_kernel, sum_kernel
     
-SAMPLE_COUNT = 30
+SAMPLE_COUNT = 100
 tested_types: list[np.dtype] = [
     # cp.dtype("float32"), 
     cp.dtype("float64"), 
@@ -42,7 +42,7 @@ def sequential_min(buffer: np.ndarray):
 
     return acc
 
-WARMUP_LENGTH = 10
+WARMUP_LENGTH = 20
 
 with cp.cuda.Device(0):
     rng = np.random.default_rng()   
@@ -78,6 +78,7 @@ with cp.cuda.Device(0):
                 # the kernel compiles at the first __call__(),
                 # and it does it for every dtype and input ndim 
                 # so it's necessary to skip the first iteration to prevent skewing the results
+                cp.cuda.Stream.null.synchronize()
                 if i > WARMUP_LENGTH:
                     sum_samples.append(time.time() - start_time)
                     sum_diffs.append(result.item() - seq_sum)
@@ -88,6 +89,7 @@ with cp.cuda.Device(0):
                 # the compiles at the first __call__(),
                 # and it does it for every dtype and input ndim 
                 # so it's necessary to skip the first iteration to prevent skewing the results
+                cp.cuda.Stream.null.synchronize()
                 if i > WARMUP_LENGTH:
                     max_samples.append(time.time() - start_time)
                     max_diffs.append(result.item() - seq_max)
@@ -99,6 +101,7 @@ with cp.cuda.Device(0):
                 # the kernel compiles at the first __call__(),
                 # and it does it for every dtype and input ndim 
                 # so it's necessary to skip the first iteration to prevent skewing the results
+                cp.cuda.Stream.null.synchronize()
                 if i > WARMUP_LENGTH:
                     min_samples.append(time.time() - start_time)
                     min_diffs.append(result.item() - seq_min)
