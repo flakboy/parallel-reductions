@@ -53,7 +53,7 @@ __global__ void blellochScanBlock_##T(const T *d_in, T *d_out, T *d_blockSums, i
     int stride = 1; \
     __syncthreads(); \
     for (int d = BLOCK_SIZE; d > 0; d >>= 1) { \
-        /*__syncthreads(); */ \
+        __syncthreads();\
         if (tid < d) { \
             int ai = stride * (2 * tid + 1) - 1; \
             int bi = stride * (2 * tid + 2) - 1; \
@@ -68,8 +68,8 @@ __global__ void blellochScanBlock_##T(const T *d_in, T *d_out, T *d_blockSums, i
         smem[ELEMS_PER_BLOCK - 1] = T(0); \
     } \
     for (int d = 1; d < ELEMS_PER_BLOCK; d <<= 1) { \
-        stride /= 2; \
-        /* __syncthreads(); */\
+        stride >>= 1; \
+        __syncthreads(); \
         if (tid < d) { \
             int ai = stride * (2 * tid + 1) - 1; \
             int bi = stride * (2 * tid + 2) - 1; \
