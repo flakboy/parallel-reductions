@@ -254,7 +254,7 @@ int main()
 {
     // Test with different sizes and types
     // size_t buffer_size = 1024 * sizeof(int);
-    size_t buffer_size = 1 << 27;
+    size_t buffer_size = 1 << 29;
     size_t n = (buffer_size) / sizeof(int);
     // size_t size = n * sizeof(int);
 
